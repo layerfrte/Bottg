@@ -8,13 +8,13 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ChatJoinRe
 TOKEN = os.getenv("TOKEN")
 
 CHANNEL_ID = -1003953850624
-CHANNEL_LINK = "https://t.me/+ED2sSGi62BNjZTdi"
+CHANNEL_LINK = "https://t.me/+emOVfai39ExlOWVi"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 
 # =========================
-# 💾 DATABASE
+# 💾 SQLITE
 # =========================
 conn = sqlite3.connect("bot.db")
 cur = conn.cursor()
@@ -41,14 +41,11 @@ def add_user(user_id):
     cur.execute("INSERT OR IGNORE INTO users VALUES (?)", (user_id,))
     conn.commit()
 
-def is_user(user_id):
-    cur.execute("SELECT user_id FROM users WHERE user_id=?", (user_id,))
-    return cur.fetchone() is not None
-
 def add_ref(user_id, app):
     cur.execute("SELECT * FROM refs WHERE user_id=? AND app=?", (user_id, app))
     if cur.fetchone():
         return False
+
     cur.execute("INSERT INTO refs VALUES (?, ?)", (user_id, app))
     conn.commit()
     return True
@@ -61,7 +58,7 @@ def ref_link(user_id, app):
     return f"https://t.me/ForclocBot?start={app}_{user_id}"
 
 # =========================
-# KEYBOARDS
+# КНОПКИ
 # =========================
 join_kb = InlineKeyboardMarkup().add(
     InlineKeyboardButton("📢 Подать заявку", url=CHANNEL_LINK)
@@ -80,14 +77,14 @@ back_kb = InlineKeyboardMarkup().add(
 )
 
 # =========================
-# START (ГЛАВНАЯ ЛОГИКА)
+# START
 # =========================
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
     user_id = message.from_user.id
     args = message.get_args()
 
-    # 🔥 реферал засчитываем
+    # 🔥 рефералы
     if args and "_" in args:
         app, referrer_id = args.split("_")
         try:
@@ -95,21 +92,20 @@ async def start(message: types.Message):
         except:
             pass
 
-    # 🔥 проверка реального доступа в канал
+    # 🔥 проверка доступа в канал
     try:
         member = await bot.get_chat_member(CHANNEL_ID, user_id)
 
-        if member.status not in ["member", "administrator", "creator"]:
+        if member.status in ["left", "kicked"]:
             await message.answer(
                 "❌ Сначала подай заявку в канал 👇",
                 reply_markup=join_kb
             )
             return
     except:
-        await message.answer("❌ Ошибка проверки канала")
+        await message.answer("❌ Ошибка проверки доступа")
         return
 
-    # если всё ок → добавляем в базу
     add_user(user_id)
 
     await message.answer(
@@ -118,15 +114,24 @@ async def start(message: types.Message):
     )
 
 # =========================
-# JOIN REQUEST (фикс заявки)
+# ЗАЯВКА В КАНАЛ (ЛОГ +1)
 # =========================
 @dp.chat_join_request_handler()
 async def join_request(update: ChatJoinRequest):
     user_id = update.from_user.id
+
     add_user(user_id)
 
+    try:
+        await bot.send_message(
+            CHANNEL_ID,
+            f"📥 +1 заявка\n👤 ID: {user_id}"
+        )
+    except:
+        print("не отправилось в канал")
+
 # =========================
-# MENU
+# МЕНЮ
 # =========================
 @dp.callback_query_handler(lambda c: c.data == "menu")
 async def menu(callback: types.CallbackQuery):
@@ -136,7 +141,7 @@ async def menu(callback: types.CallbackQuery):
     )
 
 # =========================
-# APPS + REF SYSTEM
+# СОФТ + РЕФЕРАЛЫ
 # =========================
 @dp.callback_query_handler(lambda c: c.data.startswith("app_"))
 async def apps(callback: types.CallbackQuery):
@@ -154,7 +159,7 @@ async def apps(callback: types.CallbackQuery):
         await callback.message.edit_text(
             f"❌ Для {app} нужно 5 рефералов\n\n"
             f"👥 Сейчас: {refs}/5\n\n"
-            f"🔥 Твоя ссылка:\n{ref_link(user_id, app)}",
+            f"🔥 Ваша ссылка:\n{ref_link(user_id, app)}",
             reply_markup=back_kb
         )
 
