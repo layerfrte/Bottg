@@ -21,8 +21,7 @@ cur = conn.cursor()
 
 cur.execute("""
 CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY,
-    invited_by TEXT
+    user_id INTEGER PRIMARY KEY
 )
 """)
 
@@ -38,20 +37,19 @@ conn.commit()
 # =========================
 # HELPERS
 # =========================
-def add_user(user_id, invited_by=None):
-    cur.execute("INSERT OR IGNORE INTO users VALUES (?, ?)", (user_id, invited_by))
+def add_user(user_id):
+    cur.execute("INSERT OR IGNORE INTO users VALUES (?)", (user_id,))
     conn.commit()
 
-def get_user(user_id):
-    cur.execute("SELECT user_id, invited_by FROM users WHERE user_id=?", (user_id,))
-    return cur.fetchone()
+def is_user(user_id):
+    cur.execute("SELECT user_id FROM users WHERE user_id=?", (user_id,))
+    return cur.fetchone() is not None
 
-def add_ref(referrer, app):
-    cur.execute("SELECT * FROM refs WHERE user_id=? AND app=?", (referrer, app))
+def add_ref(user_id, app):
+    cur.execute("SELECT * FROM refs WHERE user_id=? AND app=?", (user_id, app))
     if cur.fetchone():
         return False
-
-    cur.execute("INSERT INTO refs VALUES (?, ?)", (referrer, app))
+    cur.execute("INSERT INTO refs VALUES (?, ?)", (user_id, app))
     conn.commit()
     return True
 
@@ -63,8 +61,12 @@ def ref_link(user_id, app):
     return f"https://t.me/ForclocBot?start={app}_{user_id}"
 
 # =========================
-# MENU
+# KEYBOARDS
 # =========================
+join_kb = InlineKeyboardMarkup().add(
+    InlineKeyboardButton("📢 Подать заявку", url=CHANNEL_LINK)
+)
+
 menu_kb = InlineKeyboardMarkup(row_width=1).add(
     InlineKeyboardButton("1. StandKnife", callback_data="app_StandKnife"),
     InlineKeyboardButton("2. StandChillow", callback_data="app_StandChillow"),
@@ -73,23 +75,19 @@ menu_kb = InlineKeyboardMarkup(row_width=1).add(
     InlineKeyboardButton("5. Standoff 2", callback_data="app_Standoff")
 )
 
-join_kb = InlineKeyboardMarkup().add(
-    InlineKeyboardButton("📢 Подать заявку", url=CHANNEL_LINK)
-)
-
 back_kb = InlineKeyboardMarkup().add(
-    InlineKeyboardButton("🔙 Назад", callback_data="menu")
+    InlineKeyboardButton("🔙 Назад в меню", callback_data="menu")
 )
 
 # =========================
-# START
+# START (ГЛАВНАЯ ЛОГИКА)
 # =========================
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
     user_id = message.from_user.id
     args = message.get_args()
 
-    # 👇 реферал засчитывается ТОЛЬКО если человек дошёл до меню
+    # 🔥 реферал засчитываем
     if args and "_" in args:
         app, referrer_id = args.split("_")
         try:
@@ -97,17 +95,22 @@ async def start(message: types.Message):
         except:
             pass
 
-    # если новый
-    add_user(user_id)
+    # 🔥 проверка реального доступа в канал
+    try:
+        member = await bot.get_chat_member(CHANNEL_ID, user_id)
 
-    # проверка заявки
-    cur.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
-    if not cur.fetchone():
-        await message.answer(
-            "❌ Сначала подай заявку в канал 👇",
-            reply_markup=join_kb
-        )
+        if member.status not in ["member", "administrator", "creator"]:
+            await message.answer(
+                "❌ Сначала подай заявку в канал 👇",
+                reply_markup=join_kb
+            )
+            return
+    except:
+        await message.answer("❌ Ошибка проверки канала")
         return
+
+    # если всё ок → добавляем в базу
+    add_user(user_id)
 
     await message.answer(
         "Привет. Выбирай на какую приватку хочешь софт!",
@@ -115,7 +118,7 @@ async def start(message: types.Message):
     )
 
 # =========================
-# ЗАЯВКА В КАНАЛ
+# JOIN REQUEST (фикс заявки)
 # =========================
 @dp.chat_join_request_handler()
 async def join_request(update: ChatJoinRequest):
@@ -144,13 +147,12 @@ async def apps(callback: types.CallbackQuery):
 
     if refs >= 5:
         await callback.message.edit_text(
-            f"✅ Вы успешно выполнили условия!\n"
-            f"Ожидайте в течении 1 часа..",
+            "✅ Вы успешно выполнили условия!\nОжидайте в течении 1 часа..",
             reply_markup=back_kb
         )
     else:
         await callback.message.edit_text(
-            f"❌ Чтобы скачать софт на {app} нужно 5 рефералов\n\n"
+            f"❌ Для {app} нужно 5 рефералов\n\n"
             f"👥 Сейчас: {refs}/5\n\n"
             f"🔥 Твоя ссылка:\n{ref_link(user_id, app)}",
             reply_markup=back_kb
