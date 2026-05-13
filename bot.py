@@ -14,7 +14,7 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 
 # =========================
-# 💾 SQLITE
+# DATABASE
 # =========================
 conn = sqlite3.connect("bot.db")
 cur = conn.cursor()
@@ -32,6 +32,13 @@ CREATE TABLE IF NOT EXISTS refs (
 )
 """)
 
+# 🔥 ДОБАВЛЕНО: таблица заявок
+cur.execute("""
+CREATE TABLE IF NOT EXISTS requests (
+    user_id INTEGER PRIMARY KEY
+)
+""")
+
 conn.commit()
 
 # =========================
@@ -45,7 +52,6 @@ def add_ref(user_id, app):
     cur.execute("SELECT * FROM refs WHERE user_id=? AND app=?", (user_id, app))
     if cur.fetchone():
         return False
-
     cur.execute("INSERT INTO refs VALUES (?, ?)", (user_id, app))
     conn.commit()
     return True
@@ -58,7 +64,7 @@ def ref_link(user_id, app):
     return f"https://t.me/ForclocBot?start={app}_{user_id}"
 
 # =========================
-# КНОПКИ
+# KEYBOARDS
 # =========================
 join_kb = InlineKeyboardMarkup().add(
     InlineKeyboardButton("📢 Подать заявку", url=CHANNEL_LINK)
@@ -84,7 +90,7 @@ async def start(message: types.Message):
     user_id = message.from_user.id
     args = message.get_args()
 
-    # 🔥 рефералы
+    # рефералы
     if args and "_" in args:
         app, referrer_id = args.split("_")
         try:
@@ -92,18 +98,15 @@ async def start(message: types.Message):
         except:
             pass
 
-    # 🔥 проверка доступа в канал
-    try:
-        member = await bot.get_chat_member(CHANNEL_ID, user_id)
+    # 🔥 ПРОВЕРКА ЗАЯВКИ (ИСПРАВЛЕНИЕ)
+    cur.execute("SELECT * FROM requests WHERE user_id=?", (user_id,))
+    req = cur.fetchone()
 
-        if member.status in ["left", "kicked"]:
-            await message.answer(
-                "❌ Сначала подай заявку в канал 👇",
-                reply_markup=join_kb
-            )
-            return
-    except:
-        await message.answer("❌ Ошибка проверки доступа")
+    if not req:
+        await message.answer(
+            "❌ Сначала подай заявку в канал 👇",
+            reply_markup=join_kb
+        )
         return
 
     add_user(user_id)
@@ -114,11 +117,15 @@ async def start(message: types.Message):
     )
 
 # =========================
-# ЗАЯВКА В КАНАЛ (ЛОГ +1)
+# ЗАЯВКА В КАНАЛ
 # =========================
 @dp.chat_join_request_handler()
 async def join_request(update: ChatJoinRequest):
     user_id = update.from_user.id
+
+    # сохраняем заявку
+    cur.execute("INSERT OR IGNORE INTO requests VALUES (?)", (user_id,))
+    conn.commit()
 
     add_user(user_id)
 
@@ -128,10 +135,10 @@ async def join_request(update: ChatJoinRequest):
             f"📥 +1 заявка\n👤 ID: {user_id}"
         )
     except:
-        print("не отправилось в канал")
+        pass
 
 # =========================
-# МЕНЮ
+# MENU
 # =========================
 @dp.callback_query_handler(lambda c: c.data == "menu")
 async def menu(callback: types.CallbackQuery):
@@ -141,7 +148,7 @@ async def menu(callback: types.CallbackQuery):
     )
 
 # =========================
-# СОФТ + РЕФЕРАЛЫ
+# APPS + REFS
 # =========================
 @dp.callback_query_handler(lambda c: c.data.startswith("app_"))
 async def apps(callback: types.CallbackQuery):
