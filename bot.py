@@ -9,7 +9,7 @@ CHANNEL_ID = -1003953850624
 CHANNEL_LINK = "https://t.me/+ED2sSGi62BNjZTdi"
 
 bot = Bot(token=TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(bot)
 
 # счётчик заявок
 request_count = 0
