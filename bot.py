@@ -6,40 +6,73 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ChatJoinRe
 TOKEN = os.getenv("TOKEN")
 
 CHANNEL_ID = -1003953850624
-CHANNEL_LINK = "https://t.me/+emOVfai39ExlOWVi"
+CHANNEL_LINK = "https://t.me/+ED2sSGi62BNjZTdi"
 
 bot = Bot(token=TOKEN)
-dp = Dispatcher(bot)
+dp = Dispatcher()
 
-# Кнопка
+# счётчик заявок
+request_count = 0
+
+# старт
 start_kb = InlineKeyboardMarkup().add(
-    InlineKeyboardButton("📢 Перейти в канал", url=CHANNEL_LINK)
+    InlineKeyboardButton("📢 Подписаться на канал", url=CHANNEL_LINK)
 ).add(
-    InlineKeyboardButton("📌 Я подал заявку", callback_data="check")
+    InlineKeyboardButton("➡️ Проверить", callback_data="next")
 )
 
+menu_kb = InlineKeyboardMarkup().add(
+    InlineKeyboardButton("🔥 Меню", callback_data="menu")
+)
+
+# /start
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
     await message.answer(
-        "Чтобы получить доступ — подай заявку в канал 👇",
+        "ты не подал заявку на канал(👇",
         reply_markup=start_kb
     )
 
-# ЛОГ ЗАЯВОК (главная часть)
+# Кнопка продолжить
+@dp.callback_query_handler(lambda c: c.data == "next")
+async def next_step(callback: types.CallbackQuery):
+    await callback.message.edit_text(
+        "📋 МЕНЮ\n\n"
+        "• Профиль\n"
+        "• Настройки\n"
+        "• Инфо\n\n"
+        "Выбери действие:",
+        reply_markup=menu_kb
+    )
+
+# лог заявок
 @dp.chat_join_request_handler()
 async def join_request(update: ChatJoinRequest):
+    global request_count
+
+    request_count += 1
     user = update.from_user
 
-    print("━━━━━━━━━━━━━━━━━━━━━━")
-    print("📥 НОВАЯ ЗАЯВКА")
-    print(f"ID: {user.id}")
-    print(f"USERNAME: @{user.username}")
-    print(f"NAME: {user.full_name}")
-    print("━━━━━━━━━━━━━━━━━━━━━━")
+    text = (
+        f"📥 +1 заявка\n"
+        f"👤 {user.full_name}\n"
+        f"ID: {user.id}\n\n"
+        f"📊 Сейчас заявок: {request_count}\n"
+        f"🎯 Цель 1000 заявок!"
+    )
 
-@dp.callback_query_handler(lambda c: c.data == "check")
-async def check(callback: types.CallbackQuery):
-    await callback.answer("Заявка отслеживается, ожидай 👍", show_alert=True)
+    print(text)
+
+    # отправка в канал
+    try:
+        await bot.send_message(CHANNEL_ID, text)
+    except:
+        print("не удалось отправить в канал")
+
+# меню кнопка
+@dp.callback_query_handler(lambda c: c.data == "menu")
+async def menu(callback: types.CallbackQuery):
+    await callback.message.answer("Это меню бота 🔥")
 
 async def main():
     print("Bot started...")
