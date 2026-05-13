@@ -21,7 +21,8 @@ cur = conn.cursor()
 
 cur.execute("""
 CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY
+    user_id INTEGER PRIMARY KEY,
+    invited_by INTEGER
 )
 """)
 
@@ -32,7 +33,6 @@ CREATE TABLE IF NOT EXISTS refs (
 )
 """)
 
-# 🔥 ДОБАВЛЕНО: таблица заявок
 cur.execute("""
 CREATE TABLE IF NOT EXISTS requests (
     user_id INTEGER PRIMARY KEY
@@ -45,8 +45,12 @@ conn.commit()
 # HELPERS
 # =========================
 def add_user(user_id):
-    cur.execute("INSERT OR IGNORE INTO users VALUES (?)", (user_id,))
+    cur.execute("INSERT OR IGNORE INTO users VALUES (?, ?)", (user_id, None))
     conn.commit()
+
+def is_new_user(user_id):
+    cur.execute("SELECT user_id FROM users WHERE user_id=?", (user_id,))
+    return cur.fetchone() is None
 
 def add_ref(user_id, app):
     cur.execute("SELECT * FROM refs WHERE user_id=? AND app=?", (user_id, app))
@@ -90,15 +94,18 @@ async def start(message: types.Message):
     user_id = message.from_user.id
     args = message.get_args()
 
-    # рефералы
+    referrer_id = None
+    app = None
+
+    # реф ссылка
     if args and "_" in args:
         app, referrer_id = args.split("_")
         try:
-            add_ref(int(referrer_id), app)
+            referrer_id = int(referrer_id)
         except:
-            pass
+            referrer_id = None
 
-    # 🔥 ПРОВЕРКА ЗАЯВКИ (ИСПРАВЛЕНИЕ)
+    # проверка заявки
     cur.execute("SELECT * FROM requests WHERE user_id=?", (user_id,))
     req = cur.fetchone()
 
@@ -109,6 +116,26 @@ async def start(message: types.Message):
         )
         return
 
+    # регистрация пользователя
+    is_new = is_new_user(user_id)
+
+    if is_new:
+        cur.execute(
+            "INSERT OR IGNORE INTO users (user_id, invited_by) VALUES (?, ?)",
+            (user_id, referrer_id)
+        )
+        conn.commit()
+
+        # анти-накрутка
+        if referrer_id and referrer_id != user_id:
+            try:
+                await bot.send_message(
+                    referrer_id,
+                    "📈 +1 реферал засчитан!"
+                )
+            except:
+                pass
+
     add_user(user_id)
 
     await message.answer(
@@ -117,13 +144,12 @@ async def start(message: types.Message):
     )
 
 # =========================
-# ЗАЯВКА В КАНАЛ
+# JOIN REQUEST
 # =========================
 @dp.chat_join_request_handler()
 async def join_request(update: ChatJoinRequest):
     user_id = update.from_user.id
 
-    # сохраняем заявку
     cur.execute("INSERT OR IGNORE INTO requests VALUES (?)", (user_id,))
     conn.commit()
 
