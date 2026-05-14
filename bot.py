@@ -71,7 +71,7 @@ def ref_link(user_id, app):
 # KEYBOARDS
 # =========================
 join_kb = InlineKeyboardMarkup().add(
-    InlineKeyboardButton("📢 Подать заявку", url=CHANNEL_LINK)
+    InlineKeyboardButton("📢 Подписаться", url=CHANNEL_LINK)
 )
 
 menu_kb = InlineKeyboardMarkup(row_width=1).add(
@@ -111,7 +111,7 @@ async def start(message: types.Message):
 
     if not req:
         await message.answer(
-            "❌ Сначала подай заявку в канал 👇",
+            "❌ Подпишись на спонсоров далее после подписки нажимай /start",
             reply_markup=join_kb
         )
         return
@@ -158,7 +158,7 @@ async def join_request(update: ChatJoinRequest):
     try:
         await bot.send_message(
             CHANNEL_ID,
-            f"📥 +1 заявка\n👤 ID: {user_id}"
+            f"📥 +1 заявка\n👤 ID: {user_id}\n🌏Дальше - меньше!"
         )
     except:
         pass
