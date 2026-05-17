@@ -230,6 +230,147 @@ async def apps(callback: types.CallbackQuery):
         )
 
 # =========================
+# ADMIN
+# =========================
+
+ADMIN_USERNAME = "vkffe"
+
+admin_kb = InlineKeyboardMarkup(row_width=1).add(
+    InlineKeyboardButton("👥 Пользователи", callback_data="admin_users")
+)
+
+# =========================
+# /admin
+# =========================
+@dp.message_handler(commands=["admin"])
+async def admin(message: types.Message):
+
+    if message.from_user.username != ADMIN_USERNAME:
+        return
+
+    await message.answer(
+        "⚙️ Админ панель",
+        reply_markup=admin_kb
+    )
+
+# =========================
+# СПИСОК ПОЛЬЗОВАТЕЛЕЙ
+# =========================
+@dp.callback_query_handler(lambda c: c.data == "admin_users")
+async def admin_users(callback: types.CallbackQuery):
+
+    if callback.from_user.username != ADMIN_USERNAME:
+        return
+
+    cur.execute("SELECT user_id FROM users")
+    users = cur.fetchall()
+
+    kb = InlineKeyboardMarkup(row_width=1)
+
+    for user in users[:50]:
+
+        user_id = user[0]
+
+        kb.add(
+            InlineKeyboardButton(
+                f"👤 {user_id}",
+                callback_data=f"user_{user_id}"
+            )
+        )
+
+    await callback.message.edit_text(
+        "👥 Пользователи:",
+        reply_markup=kb
+    )
+
+# =========================
+# ИНФА О ПОЛЬЗОВАТЕЛЕ
+# =========================
+@dp.callback_query_handler(lambda c: c.data.startswith("user_"))
+async def user_info(callback: types.CallbackQuery):
+
+    if callback.from_user.username != ADMIN_USERNAME:
+        return
+
+    user_id = int(callback.data.split("_")[1])
+
+    # сколько рефов
+    cur.execute(
+        "SELECT COUNT(*) FROM refs WHERE user_id=?",
+        (user_id,)
+    )
+
+    refs = cur.fetchone()[0]
+
+    # кто пригласил
+    cur.execute(
+        "SELECT invited_by FROM users WHERE user_id=?",
+        (user_id,)
+    )
+
+    invited = cur.fetchone()
+
+    invited_by = invited[0] if invited else None
+
+    text = (
+        f"👤 USER: {user_id}\n\n"
+        f"📈 Рефералов: {refs}\n"
+        f"🔗 Пришел по рефке: {invited_by}"
+    )
+
+    await callback.message.edit_text(text)
+
+# =========================
+# ВЫДАТЬ РЕФЕРАЛ
+# =========================
+@dp.message_handler(commands=["giveref"])
+async def give_ref(message: types.Message):
+
+    if message.from_user.username != ADMIN_USERNAME:
+        return
+
+    args = message.text.split()
+
+    # /giveref ID APP
+    if len(args) < 3:
+        await message.answer(
+            "Пример:\n/giveref 123456789 StandKnife"
+        )
+        return
+
+    target_id = int(args[1])
+    app = args[2]
+
+    # добавляем реф
+    cur.execute(
+        "INSERT INTO refs VALUES (?, ?)",
+        (target_id, app)
+    )
+    conn.commit()
+
+    # сколько стало
+    cur.execute(
+        "SELECT COUNT(*) FROM refs WHERE user_id=? AND app=?",
+        (target_id, app)
+    )
+
+    total = cur.fetchone()[0]
+
+    # уведомление
+    try:
+        await bot.send_message(
+            target_id,
+            f"📈 По вашей ссылке перешел +1 реферал\n\n"
+            f"👥 Сейчас рефералов для {app}: {total}/5"
+        )
+    except:
+        pass
+
+    await message.answer(
+        f"✅ Пользователю {target_id} добавлен +1 реферал"
+    )
+
+# =========================
 # RUN
 # =========================
 async def main():
