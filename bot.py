@@ -218,7 +218,7 @@ async def apps(callback: types.CallbackQuery):
 
     if refs >= 10:
         await callback.message.edit_text(
-            "✅ Вы успешно выполнили условия!\nОжидайте в течении 1 часа..",
+            "✅ Вы выполнили все условия!\nВот твой файл. удачной игры👇\n$SERVERTYPE:ERROR505, FAILED SENDING FILE. RELOADING..",
             reply_markup=back_kb
         )
     else:
@@ -361,7 +361,7 @@ async def give_ref(message: types.Message):
         await bot.send_message(
             target_id,
             f"📈 По вашей ссылке перешел +1 реферал\n\n"
-            f"👥 Сейчас рефералов для {app}: {total}/5"
+            f"👥 Сейчас рефералов для {app}: {total}/10"
         )
     except:
         pass
