@@ -97,47 +97,80 @@ async def start(message: types.Message):
     referrer_id = None
     app = None
 
-    # реф ссылка
+    # =========================
+    # РЕФ ССЫЛКА
+    # =========================
     if args and "_" in args:
-        app, referrer_id = args.split("_")
         try:
+            app, referrer_id = args.split("_")
             referrer_id = int(referrer_id)
         except:
             referrer_id = None
 
-    # проверка заявки
+    # =========================
+    # ПРОВЕРКА ЗАЯВКИ
+    # =========================
     cur.execute("SELECT * FROM requests WHERE user_id=?", (user_id,))
     req = cur.fetchone()
 
     if not req:
         await message.answer(
-            "❌ Подпишись на спонсоров далее после подписки нажимай /start",
+            "❌ Сначала подай заявку в канал 👇",
             reply_markup=join_kb
         )
         return
 
-    # регистрация пользователя
-    is_new = is_new_user(user_id)
+    # =========================
+    # НОВЫЙ ПОЛЬЗОВАТЕЛЬ?
+    # =========================
+    cur.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
+    existing_user = cur.fetchone()
 
-    if is_new:
+    if not existing_user:
+
+        # сохраняем нового пользователя
         cur.execute(
-            "INSERT OR IGNORE INTO users (user_id, invited_by) VALUES (?, ?)",
+            "INSERT INTO users (user_id, invited_by) VALUES (?, ?)",
             (user_id, referrer_id)
         )
         conn.commit()
 
-        # анти-накрутка
-        if referrer_id and referrer_id != user_id:
-            try:
-                await bot.send_message(
-                    referrer_id,
-                    "📈 +1 реферал засчитан!"
+        # =========================
+        # ЗАСЧИТАТЬ РЕФЕРАЛ
+        # =========================
+        if (
+            referrer_id
+            and referrer_id != user_id
+            and app
+        ):
+
+            # не дублировать
+            cur.execute(
+                "SELECT * FROM refs WHERE user_id=? AND app=?",
+                (referrer_id, app)
+            )
+
+            already = cur.fetchone()
+
+            if not already:
+                cur.execute(
+                    "INSERT INTO refs VALUES (?, ?)",
+                    (referrer_id, app)
                 )
-            except:
-                pass
+                conn.commit()
 
-    add_user(user_id)
+                # уведомление
+                try:
+                    await bot.send_message(
+                        referrer_id,
+                        f"📈 +1 реферал для {app}!"
+                    )
+                except:
+                    pass
 
+    # =========================
+    # МЕНЮ
+    # =========================
     await message.answer(
         "Привет. Выбирай на какую приватку хочешь софт!",
         reply_markup=menu_kb
@@ -183,15 +216,15 @@ async def apps(callback: types.CallbackQuery):
 
     refs = count_refs(user_id, app)
 
-    if refs >= 5:
+    if refs >= 10:
         await callback.message.edit_text(
             "✅ Вы успешно выполнили условия!\nОжидайте в течении 1 часа..",
             reply_markup=back_kb
         )
     else:
         await callback.message.edit_text(
-            f"❌ Для {app} нужно 5 рефералов\n\n"
-            f"👥 Сейчас: {refs}/5\n\n"
+            f"❌ Для {app} нужно 10 рефералов\n\n"
+            f"👥 Сейчас: {refs}/10\n\n"
             f"🔥 Ваша ссылка:\n{ref_link(user_id, app)}",
             reply_markup=back_kb
         )
